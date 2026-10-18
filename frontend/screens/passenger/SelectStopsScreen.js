@@ -1,0 +1,189 @@
+import { ScrollView, View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, RefreshControl } from "react-native";
+import { useEffect, useState } from "react";
+import { useAuth } from "../../context/AuthContext";
+const API_URL = process.env.EXPO_PUBLIC_API_URL;
+
+
+export default function SelectStopsScreen({ route, navigation }) {
+  const {token} = useAuth();
+  const { busCode } = route.params;
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [boardingStop, setBoardingStop] = useState("");
+  const [destinations, setDestinations] = useState([]);
+  const [selectedDestination, setSelectedDestination] = useState(null);
+  const [error, setError] = useState("");
+
+  const fetchBusDetails = async () => {
+    try {
+      const res = await fetch(`${API_URL}/bus/${busCode}`, {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          'X-Tunnel-Skip-AntiPhishing-Page': 'true',
+        },
+      });
+      const data = await res.json();
+
+      if (data.error) {
+        setError(data.error);
+      } else {
+        setBoardingStop(data.boardingStop);
+        setDestinations(data.destinationStops);
+        setError(""); // Clear error on success
+      }
+    } catch (err) {
+      setError("Failed to load bus data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBusDetails();
+  }, []);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchBusDetails().then(() => {
+      setRefreshing(false);
+    });
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.error}>{error}</Text>
+        <TouchableOpacity onPress={onRefresh} style={[styles.button, { marginTop: 20 }]}>
+          <Text style={styles.buttonText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
+        <Text style={styles.label}>Boarding Stop</Text>
+        <View style={styles.lockedBox}>
+          <Text style={styles.lockedText}>{boardingStop}</Text>
+        </View>
+
+        <Text style={styles.label}>Select Destination</Text>
+
+        {destinations.map(stop => (
+          <TouchableOpacity
+            key={stop}
+            style={[
+              styles.stopItem,
+              selectedDestination === stop && styles.selected
+            ]}
+            activeOpacity={0.7}
+            onPress={() => setSelectedDestination(stop)}
+          >
+            <Text>{stop}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+      <View style={styles.footer}>
+        <TouchableOpacity
+          style={[
+            styles.button,
+            !selectedDestination && styles.disabled
+          ]}
+          disabled={!selectedDestination}
+          activeOpacity={0.7}
+          onPress={() =>
+            navigation.navigate("ConfirmTicket", {
+              busCode,
+              boardingStop,
+              destinationStop: selectedDestination
+            })
+          }
+        >
+          <Text style={styles.buttonText}>Proceed</Text>
+        </TouchableOpacity>
+      </View>
+    </View >
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    padding: 24,
+    backgroundColor: "#F9FAFB",
+    paddingBottom: 40
+  },
+  scrollContent: {
+    padding: 24,
+    paddingBottom: 120 // IMPORTANT
+  },
+  footer: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#FFFFFF"
+  },
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center"
+  },
+  label: {
+    fontSize: 14,
+    color: "#6B7280",
+    marginTop: 16,
+    marginBottom: 6
+  },
+  lockedBox: {
+    padding: 14,
+    borderRadius: 8,
+    backgroundColor: "#E5E7EB"
+  },
+  lockedText: {
+    fontWeight: "600"
+  },
+  stopItem: {
+    padding: 14,
+    borderRadius: 8,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    marginTop: 10
+  },
+  selected: {
+    borderColor: "#1E3A8A",
+    backgroundColor: "#DBEAFE"
+  },
+  button: {
+    backgroundColor: "#1E3A8A",
+    padding: 16,
+    borderRadius: 10,
+    alignItems: "center"
+  },
+  disabled: {
+    backgroundColor: "#9CA3AF"
+  },
+  buttonText: {
+    color: "#FFFFFF",
+    fontWeight: "600"
+  },
+  error: {
+    color: "red"
+  }
+});
