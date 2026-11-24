@@ -183,6 +183,44 @@ export default function LoginScreen() {
           </Text>
         </Pressable>
       )}
+
+      {/* DEMO LOGINS — tap a row to fill it in. Demo mode: payments are simulated, no real money. */}
+      <View style={styles.demoCard}>
+        <Text style={styles.demoTitle}>Try the demo</Text>
+        <Text style={styles.demoText}>
+          Passenger — register with any phone number
+        </Text>
+        <Pressable
+          onPress={() => {
+            setRole("conductor");
+            setIsRegister(false);
+            setIdentifier("CND-001");
+            setPassword("conductor123");
+          }}
+          style={styles.demoRow}
+        >
+          <Text style={styles.demoText}>
+            Conductor — CND-001 / conductor123 (tap to fill)
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => {
+            setRole("admin");
+            setIsRegister(false);
+            setIdentifier("ADMIN001");
+            setPassword("admin123");
+          }}
+          style={styles.demoRow}
+        >
+          <Text style={styles.demoText}>
+            Admin — ADMIN001 / admin123 (tap to fill)
+          </Text>
+        </Pressable>
+        <Text style={styles.demoHint}>
+          Demo bus VZM-101 runs MVP Colony → JNTU Junction. Payments are
+          simulated — no real money moves.
+        </Text>
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -268,5 +306,30 @@ const styles = StyleSheet.create({
   toggleText: {
     color: "#1E3A8A",
     fontWeight: "bold",
+  },
+  demoCard: {
+    marginTop: 24,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#F9FAFB",
+    borderRadius: 8,
+    padding: 12,
+  },
+  demoTitle: {
+    fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  demoRow: {
+    paddingVertical: 6,
+  },
+  demoText: {
+    color: "#374151",
+  },
+  demoHint: {
+    fontSize: 12,
+    color: "#6B7280",
+    marginTop: 8,
+    textAlign: "center",
   },
 });
