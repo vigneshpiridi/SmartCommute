@@ -2,13 +2,22 @@ const Razorpay = require("razorpay");
 const crypto = require("crypto");
 const Ticket = require("../models/ticket");
 
+// Demo mode: when DEMO_MODE=true, payments are simulated — no real
+// Razorpay calls, no real money. The rest of the flow (ticket lookup,
+// PAID status, QR signature) runs exactly as in the real flow.
+const DEMO_MODE = process.env.DEMO_MODE === "true";
+
 // -----------------------------
-// Razorpay instance
+// Razorpay instance (not created in demo mode — no keys needed there;
+// the constructor throws without keys, which would crash the server
+// before it can serve anything)
 // -----------------------------
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
+const razorpay = DEMO_MODE
+  ? null
+  : new Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID,
+      key_secret: process.env.RAZORPAY_KEY_SECRET,
+    });
 
 // -----------------------------
 // CREATE ORDER
@@ -32,7 +41,24 @@ const createOrder = async (req, res) => {
       return res.status(400).json({ error: "Ticket already paid" });
     }
 
-    // 2. Create Razorpay order
+    // 2. Create Razorpay order (skipped in demo mode)
+    if (DEMO_MODE) {
+      const orderId = `order_demo_${crypto.randomBytes(8).toString("hex")}`;
+
+      // 3. Save order ID
+      ticket.razorpayOrderId = orderId;
+      ticket.paymentStatus = "PENDING";
+      await ticket.save();
+
+      // 4. Send to frontend
+      return res.json({
+        orderId,
+        key: "demo",
+        amount: ticket.fare * 100, // rupees → paise
+        currency: "INR",
+      });
+    }
+
     const options = {
       amount: ticket.fare * 100, // rupees → paise
       currency: "INR",
@@ -79,16 +105,18 @@ const verifyPayment = async (req, res) => {
       return res.status(400).json({ error: "Invalid payment data" });
     }
 
-    // 1. Verify signature
-    const body = `${razorpay_order_id}|${razorpay_payment_id}`;
+    // 1. Verify signature (skipped in demo mode — fake payment)
+    if (!DEMO_MODE) {
+      const body = `${razorpay_order_id}|${razorpay_payment_id}`;
 
-    const expectedSignature = crypto
-      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-      .update(body)
-      .digest("hex");
+      const expectedSignature = crypto
+        .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+        .update(body)
+        .digest("hex");
 
-    if (expectedSignature !== razorpay_signature) {
-      return res.status(400).json({ error: "Payment verification failed" });
+      if (expectedSignature !== razorpay_signature) {
+        return res.status(400).json({ error: "Payment verification failed" });
+      }
     }
 
     // 2. Fetch ticket

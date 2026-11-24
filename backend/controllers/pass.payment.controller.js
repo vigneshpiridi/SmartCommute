@@ -3,6 +3,11 @@ const crypto = require("crypto");
 const Pass = require("../models/pass");
 const PassPaymentIntent = require("../models/passPaymentIntent");
 
+// Demo mode: when DEMO_MODE=true, payments are simulated — no real
+// Razorpay calls, no real money. The rest of the flow (intent lookup,
+// pass create/renew, QR signature) runs exactly as in the real flow.
+const DEMO_MODE = process.env.DEMO_MODE === "true";
+
 // helper
 function addDays(date, days) {
   const d = new Date(date);
@@ -32,10 +37,15 @@ async function generatePassNo() {
   return passNo;
 }
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET
-});
+// Razorpay instance (not created in demo mode — no keys needed there;
+// the constructor throws without keys, which would crash the server
+// before it can serve anything)
+const razorpay = DEMO_MODE
+  ? null
+  : new Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID,
+      key_secret: process.env.RAZORPAY_KEY_SECRET
+    });
 
 exports.createPassOrder = async (req, res) => {
   try {
@@ -63,7 +73,22 @@ exports.createPassOrder = async (req, res) => {
       });
     }
 
-    // 3️⃣ Create Razorpay order
+    // 3️⃣ Create Razorpay order (skipped in demo mode)
+    if (DEMO_MODE) {
+      const orderId = `order_demo_${crypto.randomBytes(8).toString("hex")}`;
+
+      // 4️⃣ Save order ID in intent
+      intent.razorpayOrderId = orderId;
+      await intent.save();
+
+      return res.json({
+        orderId,
+        key: "demo",
+        amount: intent.amount * 100, // rupees → paise
+        currency: "INR"
+      });
+    }
+
     const options = {
       amount: intent.amount * 100, // rupees → paise
       currency: "INR",
@@ -115,22 +140,24 @@ exports.verifyPassPayment = async (req, res) => {
       });
     }
 
-    // 1️⃣ Verify Razorpay signature
-    const body = `${razorpay_order_id}|${razorpay_payment_id}`;
+    // 1️⃣ Verify Razorpay signature (skipped in demo mode — fake payment)
+    if (!DEMO_MODE) {
+      const body = `${razorpay_order_id}|${razorpay_payment_id}`;
 
-    const expectedSignature = crypto
-      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-      .update(body)
-      .digest("hex");
+      const expectedSignature = crypto
+        .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+        .update(body)
+        .digest("hex");
 
-    // console.log("Expected signature:", expectedSignature);
-    // console.log("Received signature:", razorpay_signature);
+      // console.log("Expected signature:", expectedSignature);
+      // console.log("Received signature:", razorpay_signature);
 
-    if (expectedSignature !== razorpay_signature) {
-      console.log("Signature mismatch");
-      return res.status(400).json({
-        error: "Payment verification failed"
-      });
+      if (expectedSignature !== razorpay_signature) {
+        console.log("Signature mismatch");
+        return res.status(400).json({
+          error: "Payment verification failed"
+        });
+      }
     }
 
     // 2️⃣ Fetch payment intent by user and status (should be only one PENDING)

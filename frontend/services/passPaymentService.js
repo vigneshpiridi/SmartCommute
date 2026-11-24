@@ -3,6 +3,20 @@ import { Alert } from "react-native";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
+// Demo mode: ask the user to confirm a fake payment. No real money moves.
+function confirmDemoPayment(amountPaise) {
+  return new Promise((resolve) => {
+    Alert.alert(
+      "Demo payment \u2014 no real money",
+      `This is a demo payment. No real money will be taken.\nAmount: \u20b9${(amountPaise / 100).toFixed(2)}`,
+      [
+        { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+        { text: "Pay (Demo)", onPress: () => resolve(true) },
+      ]
+    );
+  });
+}
+
 export async function payForPass({ intentId, token, navigation }) {
   try {
     if (!intentId) {
@@ -23,7 +37,7 @@ export async function payForPass({ intentId, token, navigation }) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Failed to create order");
 
-    // 2️⃣ Open Razorpay Checkout
+    // 2️⃣ Open Razorpay Checkout (skipped in demo mode — fake payment)
     const options = {
       key: data.key,
       order_id: data.orderId,
@@ -49,7 +63,22 @@ export async function payForPass({ intentId, token, navigation }) {
       }
     };
 
-    const paymentData = await RazorpayCheckout.open(options);
+    let paymentData;
+    if (process.env.EXPO_PUBLIC_DEMO_MODE === "true") {
+      const confirmed = await confirmDemoPayment(data.amount);
+      if (!confirmed) return; // user cancelled the demo payment
+
+      // Simulate a short processing delay
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      paymentData = {
+        razorpay_order_id: data.orderId,
+        razorpay_payment_id: `pay_demo_${Math.random().toString(36).slice(2, 10)}`,
+        razorpay_signature: "demo",
+      };
+    } else {
+      paymentData = await RazorpayCheckout.open(options);
+    }
 
     // 3️⃣ Verify payment (PASS)
     const verifyRes = await fetch(`${API_URL}/pass/payment/verify`, {
